@@ -120,6 +120,8 @@ class nightlyScaler:
         for node in self.node_to_drain:
             logger.warning(f" TESTE NÃO É UMA AÇÃO REAL - Realizando Drain do node {node['name']} no cluster {self.context}")
             delete_vm(project_id=self.gcp_project, zone=node['zone'], vm_name=node['name'])
+            logger.warning(f"Solicitada remoção da VM '{node['name']}' em {node['zone']} Projeto - {self.project_id}")
+
           
     def start_work(self) -> None:
         if any(item in self.context.lower() for item in self.not_allowed_cluster):
@@ -157,8 +159,8 @@ if __name__ == "__main__":
 
     contexts,_ = config.list_kube_config_contexts()
     ctx_names = [c["name"] for c in contexts if "eks" not in c["name"]]
-    ctx_names = ["production-230322"]
-    with ThreadPoolExecutor(max_workers=1) as pool:
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
         futures = { pool.submit(run_for_context, ctx): ctx for ctx in ctx_names }
 
         for future in futures:

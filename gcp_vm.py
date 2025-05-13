@@ -8,10 +8,9 @@ credentials, _ = default()
 compute = build("compute", "v1", credentials=credentials)
 
 def find_vm_across_projects(vm_name:str) -> str:
-    # project_ids_raw = getenv("project_ids", None)
-    # if project_ids_raw is not None:
-    #     project_ids = project_ids_raw.split(',')
-    project_ids = ["production-230322"]
+    project_ids_raw = getenv("PROJECT_IDS", None)
+    if project_ids_raw is not None:
+        project_ids = project_ids_raw.split(',')
 
     for project_id in project_ids:
         result = compute.instances().aggregatedList(project=project_id).execute()
@@ -24,9 +23,9 @@ def find_vm_across_projects(vm_name:str) -> str:
     raise RuntimeError(f"Failed to find project for vm {vm_name}")
 
 def delete_vm(project_id: str, zone:str, vm_name: str) -> None:
-    # operation = compute.instances().delete(
-    #     project=project_id,
-    #     zone=zone,
-    #     instance=vm_name
-    # ).execute()
+    operation = compute.instances().delete(
+        project=project_id,
+        zone=zone,
+        instance=vm_name
+    ).execute()
     print(f"Solicitada remoção da VM '{vm_name}' em {zone} Projeto - {project_id}")

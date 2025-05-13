@@ -43,6 +43,7 @@ Defina as seguintes variáveis de ambiente:
 * DD_API_KEY_RDSM	Chave de API do Datadog para Logs	obrigatório
 * DD_APP_KEY_RDSM	App Key do Datadog (endpoint v2 de Logs)	obrigatório
 * DD_SITE	Região do Datadog	datadoghq.com
+* PROJECT_IDS - Lista dos projetos da GCP que o script deve ter acesso para remover as VM. o nome dos projetos deve estar separado por virgula. Ex: "projeto1,projeto2,projeto3"
 
 ## 🚀 Uso
 
@@ -69,3 +70,4 @@ Caso haja erros de autenticação, por favor, verificar as configurações da SA
 - Permitir a execução do script passando apenas um contexto como argumento.
 - Configurar scrpt para ser executado via cron no cluster rd-devops
 - Thresholds customizáveis via CLI ou arquivo de configuração
+- Refatoração para ter exceções pŕoprias ao invés de usar RuntimeError
