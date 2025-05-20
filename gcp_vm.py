@@ -28,4 +28,4 @@ def delete_vm(project_id: str, zone:str, vm_name: str) -> None:
         zone=zone,
         instance=vm_name
     ).execute()
-    print(f"Solicitada remoção da VM '{vm_name}' em {zone} Projeto - {project_id}")
+    print(f'Execução remova da VM {vm_name}')

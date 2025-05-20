@@ -1,7 +1,8 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from time import sleep
+import time
 from gcp_vm import delete_vm, find_vm_across_projects
 from kubernetes import client, config
+from kubernetes.client.rest import ApiException
 from datadog_logger import DataDogLogger
 import logging
 
@@ -113,14 +114,64 @@ class nightlyScaler:
             logger.info(f"{self.context} {node_name} 🔥 HOT NODE")   
     
     def drain(self) -> None:
+
         if not self.gcp_project:
             self.gcp_project = find_vm_across_projects(vm_name=self.node_to_drain[0]['name'])
             logger.info(f'Projeto localizado para o cluster {self.context} -> {self.gcp_project}')
 
+        body = {"spec": {"unschedulable": True}}
+
         for node in self.node_to_drain:
-            logger.warning(f" TESTE NÃO É UMA AÇÃO REAL - Realizando Drain do node {node['name']} no cluster {self.context}")
+            logger.warning(f" Realizando Drain do node {node['name']} no cluster {self.context}")
+            try:
+                self.v1.patch_node(name=node['name'], body=body)
+                logger.info(f"[drain] Nó {node['name']} cordonado")
+            except ApiException as e:
+                logger.error(f"[drain] Erro ao cordonar {node['name']}: {e}")
+                return
+
+            field_sel = f"spec.nodeName={node['name']}"
+            pods = self.v1.list_pod_for_all_namespaces(field_selector=field_sel).items
+            for pod in pods:
+                owners = [o.kind for o in (pod.metadata.owner_references or [])]
+                is_daemonset = "DaemonSet" in owners
+                is_mirror = (pod.metadata.annotations or {}).get("kubernetes.io/config.mirror")
+                if is_daemonset or is_mirror:
+                    continue
+
+                eviction = client.V1Eviction(
+                    metadata=client.V1ObjectMeta(name=pod.metadata.name,
+                                                namespace=pod.metadata.namespace),
+                    delete_options=client.V1DeleteOptions(grace_period_seconds=60)
+                )
+
+                try:
+                    self.v1.create_namespaced_pod_eviction(name=pod.metadata.name,
+                                                    namespace=pod.metadata.namespace,
+                                                    body=eviction)
+                    logger.info(f"[drain] Eviction solicitado para {pod.metadata.namespace}/{pod.metadata.name}")
+                except ApiException as e:
+                    logger.error(f"[drain] Falha ao evictar {pod.metadata.namespace}/{pod.metadata.name}: {e}")
+
+                deadline = time.time() + 60
+                while True:
+                    remaining = self.v1.list_pod_for_all_namespaces(field_selector=field_sel).items
+
+                    running = [p for p in remaining
+                            if not ((p.metadata.owner_references or [] and
+                                        p.metadata.owner_references[0].kind == "DaemonSet")
+                                    or (p.metadata.annotations or {}).get("kubernetes.io/config.mirror"))]
+                    if not running or time.time() > deadline:
+                        break
+                    time.sleep(2)
+
+                if running:
+                    logger.info(f"[drain] {len(running)} pods ainda presentes após 60s")
+                else:
+                    logger.info(f"[drain] Dreno completo de {node['name']}")
+
             delete_vm(project_id=self.gcp_project, zone=node['zone'], vm_name=node['name'])
-            logger.warning(f"Solicitada remoção da VM '{node['name']}' em {node['zone']} Projeto - {self.project_id}")
+            logger.warning(f"Solicitada remoção da VM '{node['name']}' em {node['zone']} Projeto - {self.gcp_project}")
 
           
     def start_work(self) -> None:
@@ -135,13 +186,16 @@ class nightlyScaler:
                 logger.error(msg)
                 raise ConnectionError(msg)
 
+
         note_data = self.get_node_capacity_usage()
 
+        
         if not note_data:
             return None
-        
+
         pod_counts = [n["pod_count"] for n in note_data if n["pod_count"] > 0]
         media_pods = sum(pod_counts) / len(pod_counts) if pod_counts else 1
+
         for node in note_data:
             self.check_drain(
                 node['name'],
@@ -152,15 +206,21 @@ class nightlyScaler:
                 node['zone'],
                 media_pods
             )
+        
+        if len(self.node_to_drain) == 0:
+            return None
+    
         self.drain()
         
 
 if __name__ == "__main__":
 
-    contexts,_ = config.list_kube_config_contexts()
-    ctx_names = [c["name"] for c in contexts if "eks" not in c["name"]]
+    # contexts,_ = config.list_kube_config_contexts()
+    # ctx_names = [c["name"] for c in contexts if "eks" not in c["name"]]
 
-    with ThreadPoolExecutor(max_workers=4) as pool:
+    ctx_names = ['gke_rd-prod-eng-stg-01_us-central1_services-gke-usc1-prod-eng-stg-01']
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
         futures = { pool.submit(run_for_context, ctx): ctx for ctx in ctx_names }
 
         for future in futures:
