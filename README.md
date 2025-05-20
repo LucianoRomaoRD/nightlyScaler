@@ -18,6 +18,8 @@ Este repositório contém um script Python para realizar scale-down automático 
     * DD_API_KEY_RDSM
     * DD_APP_KEY_RDSM
     * DD_SITE (ex: us5.datadoghq.com)
+- SA devidamente configurada com as seguintes permissões nos projetos em que o script deve rodar: roles/compute.instanceAdmin.v1 e roles/viewer
+
 
 ## 📦 Instalação
 
